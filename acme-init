@@ -539,7 +539,7 @@ if [ -f "${ACME_PASSWORD_FILE}" ] ; then
 			&& say "\t✅ AES-256 (PKCS8) Encrypted key ready!" \
 			|| warn "Failed to create the AES-256 (PKCS8) Encrypted certificate key"
 
-		if ! is_fips_enabled ; then
+		if ! fips_enabled ; then
 			doing "Creating an RSA encrypted version of the key..."
 			openssl rsa -aes256 \
 				-in "${SSL_DIR}/cert.key" \
