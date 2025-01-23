@@ -504,6 +504,8 @@ if [ -f "${ACME_PASSWORD_FILE}" ] ; then
 			fi
 		fi
 
+		export STOREPASS="$(<"${ACME_KEYSTORE_PASSWORD_FILE}")"
+
 		# Make sure our SAN list is unique, and
 		# sorted, and pre-pend the --san argument
 		SAN_ARG=()
@@ -526,13 +528,26 @@ if [ -f "${ACME_PASSWORD_FILE}" ] ; then
 		sed -i -e '/^-\+END CERTIFICATE-\+$/q' "${SSL_DIR}/cert.pem"
 		say "\t✅ Certificate ready!"
 
-		doing "Creating an encrypted version of the key..."
-		openssl rsa -aes256 \
-			-in "${SSL_DIR}/cert.key" \
-			-out "${SSL_DIR}/cert.key.enc" \
-			-passout file:<(yes "$(<"${ACME_KEYSTORE_PASSWORD_FILE}")" | head -2)
 		SECURE_FILES+=("${SSL_DIR}/cert.key")
-		say "\t✅ Encrypted key ready!"
+
+		doing "Creating a AES (PKCS8) encrypted version of the key..."
+		openssl pkcs8 -topk8 \
+			-in "${SSL_DIR}/cert.key" \
+			-out "${SSL_DIR}/cert.key.aes" \
+			-v2 aes-256-cbc \
+			-passout env:STOREPASS \
+			&& say "\t✅ AES-256 (PKCS8) Encrypted key ready!" \
+			|| warn "Failed to create the AES-256 (PKCS8) Encrypted certificate key"
+
+		if ! is_fips_enabled ; then
+			doing "Creating an RSA encrypted version of the key..."
+			openssl rsa -aes256 \
+				-in "${SSL_DIR}/cert.key" \
+				-out "${SSL_DIR}/cert.key.rsa" \
+				-passout env:STOREPASS \
+				&& say "\t✅ RSA Encrypted key ready!" \
+				|| warn "Failed to create the RSA Encrypted certificate key"
+		fi
 
 		doing "Copying the root and intermediate CAs into the target directory..."
 		cp -f "${ACME_ROOT_CA_ANCHOR}" "${SSL_DIR}/ca-root.pem"
@@ -548,6 +563,7 @@ if [ -f "${ACME_PASSWORD_FILE}" ] ; then
 			ACME_KEYSTORE_PASSWORD_FILE="${SSL_DIR}/keystore.pass"
 			SECURE_FILES+=("${ACME_KEYSTORE_PASSWORD_FILE}")
 		fi
+		export STOREPASS="$(<"${ACME_KEYSTORE_PASSWORD_FILE}")"
 	fi
 
 	doing "Rendering the certificate files for HAProxy..."
@@ -562,7 +578,6 @@ if [ -f "${ACME_PASSWORD_FILE}" ] ; then
 	# Find the Java keytool, if it's installed
 	if type -P keytool &>/dev/null && ! "${ACME_WAIT}" ; then
 		doing "Rendering a PKCS12 Keystore with the new certificate & key..."
-		STOREPASS="$(<"${ACME_KEYSTORE_PASSWORD_FILE}")"
 
 		# First, create the base keystore
 		PKCS12="${SSL_DIR}/keystore.pkcs12"
@@ -570,10 +585,10 @@ if [ -f "${ACME_PASSWORD_FILE}" ] ; then
 			-export \
 			-in "${SSL_DIR}/cert.pem" \
 			-inkey "${SSL_DIR}/cert.key" \
-			-passin file:<(yes "${STOREPASS}" | head -2) \
+			-passin env:STOREPASS \
 			-name "${ACME_KEY_ALIAS}" \
 			-out "${PKCS12}" \
-			-passout file:<(yes "${STOREPASS}" | head -2)
+			-passout env:STOREPASS
 
 		# Then, append the additional CAs into the newly-created keystore
 		for CERT in ca-int.pem ca-root.pem ; do

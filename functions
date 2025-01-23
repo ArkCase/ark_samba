@@ -1429,3 +1429,29 @@ execute_unless()
 	( exec "${@}" )
 	return ${?}
 }
+
+#
+# usage: fips_enabled
+#
+# Check to see if FIPS is enabled, and return
+# a 0 status if it is, non-0 if it is not.
+#
+fips_enabled()
+{
+	[ -v FIPS_FLAG_FILE ] || FIPS_FLAG_FILE="/proc/sys/crypto/fips_enabled"
+
+	# If the flag file isn't there and readable, fail
+	is_file_readable "${FIPS_FLAG_FILE}" || return 2
+
+	# If we can't read the flag file's contents, fail
+	local FIPS_FLAG="$(<"${FIPS_FLAG_FILE}")" || return 3
+
+	# If the contents of the flag file aren't a number, fail
+	[[ "${FIPS_FLAG}" =~ ^[1-9][0-9]*$ ]] || return 4
+
+	# If the number from the flag file is not 1, fail
+	[ ${FIPS_FLAG} -eq 1 ] || return 1
+
+	# The flag file is there and contains a non-0 number
+	return 0
+}
