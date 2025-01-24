@@ -62,6 +62,23 @@ validate_ip()
 	return 0
 }
 
+is_variable_true()
+{
+	local V="${1}"
+	[ -v "${V}" ] || return 1
+	case "${!V,,}" in
+		true | t | yes | y | on ) return 0 ;;
+	esac
+	return 1
+}
+
+is_supported()
+{
+	local V="${1}"
+	[ -n "${V}" ] || return 1
+	is_variable_true "ACME_SUPPORT_${V}"
+}
+
 validate_cert()
 {
 	local CERT="${1}"
@@ -146,14 +163,39 @@ download_chain()
 	return ${RC}
 }
 
-render_trusted_certs()
+add_global_trusts()
 {
-	(
-		echo "${TRUST_BUNDLE}"
-		find "${ANCHORS}" -mindepth 1 -maxdepth 1 -type f
-		echo "${SSL_DIR}/ca-int.pem"
-		echo "${SSL_DIR}/ca-root.pem"
-	) | sort | xargs cat
+	local TYPE="${1}"
+	local KEYSTORE="${2}"
+	local PASSWORD="${3}"
+
+	to_boolean "${ACME_KEYSTORE_WITH_TRUSTS:-false}" || return 0
+
+	doing "Adding the default global trusts..."
+	# First off, add the trusts from the default CACERTS
+	keytool \
+		-importkeystore \
+		-srckeystore "${CACERTS}" \
+		-srcstorepass "${CACERTS_PASS}" \
+		-destkeystore "${KEYSTORE}" \
+		-deststorepass "${PASSWORD}" \
+		-deststoretype "${TYPE}" < /dev/null || err "Could not append the global trusts (cacerts)"
+
+	# Now add any files from the anchors directory. By now,
+	# these should include any and all declared trusts
+	doing "Adding additional global trusts..."
+	while read CERT ; do
+		ALIAS="${CERT##*/}"
+		ALIAS="acme-${ALIAS%.*}"
+		keytool \
+			-importcert \
+			-noprompt \
+			-keystore "${KEYSTORE}" \
+			-storepass "${PASSWORD}" \
+			-storetype "${TYPE}" \
+			-alias "${ALIAS}" \
+			-file "${CERT}" < /dev/null || err "Could not append [${CERT}]"
+	done < <(find "${ANCHORS}" -mindepth 1 -maxdepth 1 -type f | sort)
 }
 
 if "$(to_boolean "${ACME_DISABLE:-false}")" ; then
@@ -169,16 +211,14 @@ set_or_default SSL_DIR "/.ssl"
 set_or_default SSL_TRUSTS_DIR "/.trusts"
 set_or_default PKI_HOME "/etc/pki"
 set_or_default ANCHORS "${PKI_HOME}/ca-trust/source/anchors"
-set_or_default TRUST_BUNDLE "${PKI_HOME}/tls/cert.pem"
+set_or_default CACERTS "${PKI_HOME}/java/cacerts"
 
+set_or_default CACERTS_PASS "changeit"
 set_or_default ACME_URL "https://acme:9000"
 set_or_default ACME_KEY_ALIAS "acme"
 set_or_default ACME_WAIT "false"
 set_or_default ACME_WAIT_MARKER "${SSL_DIR}/.acme-ready"
 set_or_default ACME_WAIT_TIMEOUT "$(timestr_to_secs 20m)"
-
-set_or_default PKCS12_KEY_PBE "AES-256-CBC"
-set_or_default PKCS12_CERT_PBE "${PKCS12_KEY_PBE}"
 
 set_or_default SSL_EXTRA_SAN
 set_as_boolean SSL_EXTRA_SAN_STRICT
@@ -536,23 +576,80 @@ if [ -f "${ACME_PASSWORD_FILE}" ] ; then
 	say "\t✅ Done!"
 
 	# Find the Java keytool, if it's installed
-	if ! "${ACME_WAIT}" ; then
+	if type -P keytool &>/dev/null && ! "${ACME_WAIT}" ; then
+
+		#
+		# We unfortunately have to disable FIPS for Java ... long story
+		#
+		set_or_default JAVA_TOOL_OPTIONS
+		fips_enabled && export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS} -Dcom.redhat.fips=false"
+
 		doing "Rendering a PKCS12 Keystore with the new certificate & key..."
 
-		# First, create the base keystore including all trusted certs
+		# First, create the base keystore
 		PKCS12="${SSL_DIR}/keystore.pkcs12"
 		openssl pkcs12 \
 			-export \
-			-certpbe "${PKCS12_KEY_PBE}" \
-			-keypbe "${PKCS12_CERT_PBE}" \
-			-name "${ACME_KEY_ALIAS}" \
 			-in "${SSL_DIR}/cert.pem" \
 			-inkey "${SSL_DIR}/cert.key" \
 			-passin env:STOREPASS \
-			-certfile <(render_trusted_certs) \
+			-name "${ACME_KEY_ALIAS}" \
 			-out "${PKCS12}" \
 			-passout env:STOREPASS
+
+		# Then, append the additional CAs into the newly-created keystore
+		for CERT in ca-int.pem ca-root.pem ; do
+			say "\t👉 Adding ${CERT}..."
+			keytool \
+				-importcert \
+				-noprompt \
+				-keystore "${PKCS12}" \
+				-storepass "${STOREPASS}" \
+				-storetype "PKCS12" \
+				-alias "acme-${CERT%.*}" \
+				-file "${SSL_DIR}/${CERT}"
+		done
+
+		# Finally, if so configured, append both the additional trusts and the
+		# Operating system's default trusts into the keystore
+		add_global_trusts PKCS12 "${PKCS12}" "${STOREPASS}"
 		say "\t✅ Ready!"
+
+		# Finally, if other keystore types are required, use them
+		for STORETYPE in jks jceks ; do
+			is_supported "${STORETYPE^^}" || continue
+			doing "Creating a ${STORETYPE^^} Java Keystore with the new certificate & key..."
+			STOREFILE="${SSL_DIR}/keystore.${STORETYPE}"
+			rm -f "${STOREFILE}" &>/dev/null || true
+
+			# First, copy only the key and cert we want
+			keytool \
+				-importkeystore \
+				-srcalias "${ACME_KEY_ALIAS}" \
+				-srckeystore "${PKCS12}" \
+				-srcstorepass "${STOREPASS}" \
+				-srcstoretype PKCS12 \
+				-destkeystore "${STOREFILE}" \
+				-deststorepass "${STOREPASS}" \
+				-destkeypass "${STOREPASS}" \
+				-deststoretype "${STORETYPE}"
+
+			# Then, append the additional CAs into the newly-created keystore
+			for CERT in ca-int.pem ca-root.pem ; do
+				say "\t👉 Adding ${CERT}..."
+				keytool \
+					-importcert \
+					-noprompt \
+					-keystore "${STOREFILE}" \
+					-storepass "${STOREPASS}" \
+					-storetype "${STORETYPE}" \
+					-alias "acme-${CERT%.*}" \
+					-file "${SSL_DIR}/${CERT}"
+			done
+
+			add_global_trusts "${STORETYPE}" "${STOREFILE}" "${STOREPASS}"
+			say "\t✅ Ready!"
+		done
 	fi
 
 	doing "Setting tight permissions for the generated data..."
