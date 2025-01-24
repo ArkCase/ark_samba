@@ -20,21 +20,31 @@ PWFILE="${SSL_DIR}/keystore.pass"
 BASE_FILES=(
 	"${SSL_DIR}/ca-root.pem"
 	"${SSL_DIR}/ca-int.pem"
-	"${SSL_DIR}/cert.key.enc"
+	"${SSL_DIR}/cert.key.aes"
 	"${SSL_DIR}/cert.pem"
 	"${PWFILE}"
 )
+
+fips_enabled || BASE_FILES+=( "${SSL_DIR}/cert.key.rsa" )
 
 for f in "${BASE_FILES[@]}" ; do
 	is_file_readable "${f}"
 	[ -s "${f}" ] || fail "The file [${f}] is of length 0"
 done
 
-# Check that the key is valid, and that the password decrypts it
-openssl rsa -check -noout -in "${SSL_DIR}/cert.key.enc" -passin file:"${PWFILE}" &>/dev/null || fail "The private key is not valid, or could not be decrypted with the stored password"
+# Decrypt the AES key
+AES="$(openssl pkcs8 -in "${SSL_DIR}/cert.key.aes" -v2 aes-256-cbc -passin file:"${PWFILE}")" || fail "Failed to decrypt the AES-encrypted (PKCS8) private key"
+read PRIVATE rest < <(echo -n "${AES}" | openssl rsa -modulus -noout | sha256sum)
+
+if ! fips_enabled ; then
+	RSA="$(openssl rsa -in "${SSL_DIR}/cert.key.rsa" -passin file:"${PWFILE}" 2>/dev/null)" || fail "Failed to decrypt the RSA-encrypted private key"
+	read RSA_PRIVATE rest < <(echo -n "${RSA}" | openssl rsa -modulus -noout | sha256sum)
+
+	# Compare the moduli
+	[ "${PRIVATE}" == "${RSA_PRIVATE}" ] || fail "The RSA-encrypted key is not equal to the AES-encrypted key"
+fi
 
 # Check that the private and public keys match
-read PRIVATE rest < <(openssl rsa -modulus -noout -in "${SSL_DIR}/cert.key.enc" -passin file:"${PWFILE}" | sha256sum)
 read PUBLIC rest < <(openssl x509 -modulus -noout -in "${SSL_DIR}/cert.pem" | sha256sum)
 [ "${PUBLIC}" == "${PRIVATE}" ] || fail "The modulus for the private and public keys did not match."
 
