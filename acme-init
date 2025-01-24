@@ -177,6 +177,9 @@ set_or_default ACME_WAIT "false"
 set_or_default ACME_WAIT_MARKER "${SSL_DIR}/.acme-ready"
 set_or_default ACME_WAIT_TIMEOUT "$(timestr_to_secs 20m)"
 
+set_or_default PKCS12_KEY_PBE "AES-256-CBC"
+set_or_default PKCS12_CERT_PBE "${PKCS12_KEY_PBE}"
+
 set_or_default SSL_EXTRA_SAN
 set_as_boolean SSL_EXTRA_SAN_STRICT
 
@@ -540,6 +543,8 @@ if [ -f "${ACME_PASSWORD_FILE}" ] ; then
 		PKCS12="${SSL_DIR}/keystore.pkcs12"
 		openssl pkcs12 \
 			-export \
+			-certpbe "${PKCS12_KEY_PBE}" \
+			-keypbe "${PKCS12_CERT_PBE}" \
 			-name "${ACME_KEY_ALIAS}" \
 			-in "${SSL_DIR}/cert.pem" \
 			-inkey "${SSL_DIR}/cert.key" \
