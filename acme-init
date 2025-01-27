@@ -62,23 +62,6 @@ validate_ip()
 	return 0
 }
 
-is_variable_true()
-{
-	local V="${1}"
-	[ -v "${V}" ] || return 1
-	case "${!V,,}" in
-		true | t | yes | y | on ) return 0 ;;
-	esac
-	return 1
-}
-
-is_supported()
-{
-	local V="${1}"
-	[ -n "${V}" ] || return 1
-	is_variable_true "ACME_SUPPORT_${V}"
-}
-
 validate_cert()
 {
 	local CERT="${1}"
@@ -171,31 +154,18 @@ add_global_trusts()
 
 	to_boolean "${ACME_KEYSTORE_WITH_TRUSTS:-false}" || return 0
 
-	doing "Adding the default global trusts..."
+	doing "Adding the global trusts..."
 	# First off, add the trusts from the default CACERTS
 	keytool \
 		-importkeystore \
 		-srckeystore "${CACERTS}" \
 		-srcstorepass "${CACERTS_PASS}" \
+		-srcstoretype "${CACERTS_TYPE}" \
 		-destkeystore "${KEYSTORE}" \
 		-deststorepass "${PASSWORD}" \
-		-deststoretype "${TYPE}" < /dev/null || err "Could not append the global trusts (cacerts)"
-
-	# Now add any files from the anchors directory. By now,
-	# these should include any and all declared trusts
-	doing "Adding additional global trusts..."
-	while read CERT ; do
-		ALIAS="${CERT##*/}"
-		ALIAS="acme-${ALIAS%.*}"
-		keytool \
-			-importcert \
-			-noprompt \
-			-keystore "${KEYSTORE}" \
-			-storepass "${PASSWORD}" \
-			-storetype "${TYPE}" \
-			-alias "${ALIAS}" \
-			-file "${CERT}" < /dev/null || err "Could not append [${CERT}]"
-	done < <(find "${ANCHORS}" -mindepth 1 -maxdepth 1 -type f | sort)
+		-deststoretype "${TYPE}" \
+		"${KEYTOOL_FLAGS[@]}" \
+		< /dev/null || err "Could not append the global trusts (cacerts)"
 }
 
 if "$(to_boolean "${ACME_DISABLE:-false}")" ; then
@@ -209,11 +179,14 @@ getent group "${ACM_GROUP}" &>/dev/null || fail "The group [${ACM_GROUP}] does n
 
 set_or_default SSL_DIR "/.ssl"
 set_or_default SSL_TRUSTS_DIR "/.trusts"
+set_or_default KEYSTORE "${SSL_DIR}/keystore.pkcs12"
+set_or_default KEYSTORE_TYPE
 set_or_default PKI_HOME "/etc/pki"
 set_or_default ANCHORS "${PKI_HOME}/ca-trust/source/anchors"
 set_or_default CACERTS "${PKI_HOME}/java/cacerts"
-
 set_or_default CACERTS_PASS "changeit"
+set_or_default CACERTS_TYPE "jks"
+
 set_or_default ACME_URL "https://acme:9000"
 set_or_default ACME_KEY_ALIAS "acme"
 set_or_default ACME_WAIT "false"
@@ -222,6 +195,30 @@ set_or_default ACME_WAIT_TIMEOUT "$(timestr_to_secs 20m)"
 
 set_or_default SSL_EXTRA_SAN
 set_as_boolean SSL_EXTRA_SAN_STRICT
+
+set_or_default DEFAULT_PBE "AES-256-CBC"
+set_or_default PKCS12_KEY_PBE "${DEFAULT_PBE}"
+set_or_default PKCS12_CERT_PBE "${DEFAULT_PBE}"
+
+set_or_default KT_PROVIDER
+set_or_default KT_PROVIDER_ARGS
+set_or_default KT_PROVIDER_PATH
+
+if fips_enabled ; then
+	[ -n "${KT_PROVIDER}" ] || KT_PROVIDER="org.bouncycastle.jcajce.provider.BouncyCastleFipsProvider"
+	[ -n "${KT_PROVIDER_PATH}" ] || KT_PROVIDER_PATH="${BC_PROV_JAR}"
+	[ -n "${KEYSTORE_TYPE}" ] || KEYSTORE_TYPE="BCPKCS12"
+fi
+[ -n "${KEYSTORE_TYPE}" ] || KEYSTORE_TYPE="PKCS12"
+
+PKCS12_FLAGS=()
+[ -n "${PKCS12_KEY_PBE}" ] && PKCS12_FLAGS+=(-keypbe "${PKCS12_KEY_PBE}")
+[ -n "${PKCS12_CERT_PBE}" ] && PKCS12_FLAGS+=(-certpbe "${PKCS12_CERT_PBE}")
+
+KEYTOOL_FLAGS=()
+[ -n "${KT_PROVIDER}" ] && KEYTOOL_FLAGS+=(-providerclass "${KT_PROVIDER}")
+[ -n "${KT_PROVIDER_ARGS}" ] && KEYTOOL_FLAGS+=(-providerarg "${KT_PROVIDER_ARGS}")
+[ -n "${KT_PROVIDER_PATH}" ] && KEYTOOL_FLAGS+=(-providerpath "${KT_PROVIDER_PATH}")
 
 # Validate the URL
 [[ "${ACME_URL}" =~ ^http(s)?://([^:/]+)(:([1-9][0-9]*))?(/.*)?$ ]] || fail "Malformed URL for the ACME CA: [${ACME_URL}]"
@@ -240,7 +237,7 @@ ACME_ROOT_CA_ANCHOR="${ANCHORS}/${ACME_ROOT_CA_BASENAME}.crt"
 ACME_INT_CA_BASENAME="ca-int"
 ACME_INT_CA_ANCHOR="${ANCHORS}/${ACME_INT_CA_BASENAME}.crt"
 
-if "${ACME_WAIT}" ; then
+if as_boolean "${ACME_WAIT}" ; then
 	wait_for_marker "${ACME_WAIT_MARKER}" || fail "ACME client initialization timed out"
 fi
 
@@ -252,7 +249,7 @@ fi
 GENERATE_NEW_CERTIFICATES="false"
 acme-validate || GENERATE_NEW_CERTIFICATES="true"
 
-if "${GENERATE_NEW_CERTIFICATES}" ; then
+if as_boolean "${GENERATE_NEW_CERTIFICATES}" ; then
 	################################################################################
 	#
 	# Download the root CA we'll use to trust everything from this cluster
@@ -398,7 +395,7 @@ if [ -f "${ACME_PASSWORD_FILE}" ] ; then
 	# restrictive of all: only readable by the owner
 	SECURE_FILES=()
 
-	if "${GENERATE_NEW_CERTIFICATES}" && ! "${ACME_WAIT}" ; then
+	if as_boolean "${GENERATE_NEW_CERTIFICATES}" && ! as_boolean "${ACME_WAIT}" ; then
 		FQDN="$(hostname -f)"
 		IFS="." read POD SERVICE NAMESPACE SVC CLUSTER_DOMAIN <<< "${FQDN}"
 
@@ -576,80 +573,20 @@ if [ -f "${ACME_PASSWORD_FILE}" ] ; then
 	say "\t✅ Done!"
 
 	# Find the Java keytool, if it's installed
-	if type -P keytool &>/dev/null && ! "${ACME_WAIT}" ; then
-
-		#
-		# We unfortunately have to disable FIPS for Java ... long story
-		#
-		set_or_default JAVA_TOOL_OPTIONS
-		fips_enabled && export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS} -Dcom.redhat.fips=false"
-
-		doing "Rendering a PKCS12 Keystore with the new certificate & key..."
-
-		# First, create the base keystore
-		PKCS12="${SSL_DIR}/keystore.pkcs12"
+	KEYTOOL="false"
+	type -P keytool &>/dev/null && KEYTOOL="true"
+	if as_boolean "${KEYTOOL}" && ! as_boolean "${ACME_WAIT}" ; then
+		doing "Rendering a ${KEYSTORE_TYPE} Keystore with the new certificate & key..."
 		openssl pkcs12 \
 			-export \
 			-in "${SSL_DIR}/cert.pem" \
 			-inkey "${SSL_DIR}/cert.key" \
 			-passin env:STOREPASS \
 			-name "${ACME_KEY_ALIAS}" \
-			-out "${PKCS12}" \
+			-out "${KEYSTORE}" \
+			"${PKCS12_FLAGS[@]}" \
 			-passout env:STOREPASS
-
-		# Then, append the additional CAs into the newly-created keystore
-		for CERT in ca-int.pem ca-root.pem ; do
-			say "\t👉 Adding ${CERT}..."
-			keytool \
-				-importcert \
-				-noprompt \
-				-keystore "${PKCS12}" \
-				-storepass "${STOREPASS}" \
-				-storetype "PKCS12" \
-				-alias "acme-${CERT%.*}" \
-				-file "${SSL_DIR}/${CERT}"
-		done
-
-		# Finally, if so configured, append both the additional trusts and the
-		# Operating system's default trusts into the keystore
-		add_global_trusts PKCS12 "${PKCS12}" "${STOREPASS}"
 		say "\t✅ Ready!"
-
-		# Finally, if other keystore types are required, use them
-		for STORETYPE in jks jceks ; do
-			is_supported "${STORETYPE^^}" || continue
-			doing "Creating a ${STORETYPE^^} Java Keystore with the new certificate & key..."
-			STOREFILE="${SSL_DIR}/keystore.${STORETYPE}"
-			rm -f "${STOREFILE}" &>/dev/null || true
-
-			# First, copy only the key and cert we want
-			keytool \
-				-importkeystore \
-				-srcalias "${ACME_KEY_ALIAS}" \
-				-srckeystore "${PKCS12}" \
-				-srcstorepass "${STOREPASS}" \
-				-srcstoretype PKCS12 \
-				-destkeystore "${STOREFILE}" \
-				-deststorepass "${STOREPASS}" \
-				-destkeypass "${STOREPASS}" \
-				-deststoretype "${STORETYPE}"
-
-			# Then, append the additional CAs into the newly-created keystore
-			for CERT in ca-int.pem ca-root.pem ; do
-				say "\t👉 Adding ${CERT}..."
-				keytool \
-					-importcert \
-					-noprompt \
-					-keystore "${STOREFILE}" \
-					-storepass "${STOREPASS}" \
-					-storetype "${STORETYPE}" \
-					-alias "acme-${CERT%.*}" \
-					-file "${SSL_DIR}/${CERT}"
-			done
-
-			add_global_trusts "${STORETYPE}" "${STOREFILE}" "${STOREPASS}"
-			say "\t✅ Ready!"
-		done
 	fi
 
 	doing "Setting tight permissions for the generated data..."
@@ -675,10 +612,20 @@ else
 	err "Can't find the provisioner password file at [${ACME_PASSWORD_FILE}], did not generate any new certificates or keystores"
 fi
 
-"${ACME_WAIT}" || create_marker "${ACME_WAIT_MARKER}" || warn "Failed to create the wait marker [${ACME_WAIT_MARKER}]"
+as_boolean "${ACME_WAIT}" || create_marker "${ACME_WAIT_MARKER}" || warn "Failed to create the wait marker [${ACME_WAIT_MARKER}]"
 
 doing "Updating the trusted certificates"
 chown -R root:root "${ANCHORS}"
-chmod -R 0440 "${ANCHORS}"
+chmod -R a=rwX "${ANCHORS}"
 update-ca-trust extract || fail "Failed to update the CA trusts"
 say "\t✅ CA trusts updated system-wide!"
+
+# Add the global trusts (from ${CACERTS}) into the keystore
+
+if as_boolean "${KEYTOOL}" ; then
+	doing "Adding the global trusts to the ${KEYSTORE_TYPE} keystore!"
+	add_global_trusts "${KEYSTORE_TYPE}" "${KEYSTORE}" "${STOREPASS}" || fail "Failed to add the global trusts to the keystore!"
+	say "\t✅ Global trusts added!"
+fi
+
+ok "SSL ready!"
