@@ -9,7 +9,7 @@ ARG OS="linux"
 ARG VER="4.14.5"
 ARG PKG="samba"
 
-ARG STEP_VER="0.27.4"
+ARG STEP_VER="0.28.2"
 ARG STEP_SRC="https://dl.smallstep.com/gh-release/cli/gh-release-header/v${STEP_VER}/step-cli-${STEP_VER}-1.x86_64.rpm"
 
 ARG SAMBA_REGISTRY="${BASE_REGISTRY}"
@@ -21,6 +21,14 @@ ARG SAMBA_RPM_IMG="${SAMBA_REGISTRY}/${SAMBA_REPO}:${SAMBA_BASE_VER_PFX}${SAMBA_
 ARG BASE_REPO="rockylinux"
 ARG BASE_VER="8.5"
 ARG BASE_IMG="${BASE_REPO}:${BASE_VER}"
+
+ARG ARK_BASE_REGISTRY="${BASE_REGISTRY}"
+ARG ARK_BASE_REPO="arkcase/base"
+ARG ARK_BASE_VER="8"
+ARG ARK_BASE_VER_PFX="${BASE_VER_PFX}"
+ARG ARK_BASE_IMG="${ARK_BASE_REGISTRY}/${ARK_BASE_REPO}:${ARK_BASE_VER_PFX}${ARK_BASE_VER}"
+
+FROM "${ARK_BASE_IMG}" AS arkcase-base
 
 FROM "${SAMBA_RPM_IMG}" AS src
 
@@ -115,12 +123,17 @@ EXPOSE 389
 EXPOSE 636
 
 #
+# Copy from the base image
+#
+COPY --chown=root:root --from=arkcase-base /.functions /.functions
+COPY --chown=root:root --from=arkcase-base /usr/local/bin/* /usr/local/bin
+
+#
 # Set up script and run
 #
 COPY --chown=root:root entrypoint test-ready.sh test-live.sh test-startup.sh samba-directory-templates.tar.gz /
-COPY --chown=root:root functions /.functions
-COPY --chown=root:root acme-init acme-validate search /usr/local/bin/
-RUN chmod 755 /entrypoint /test-ready.sh /test-live.sh /test-startup.sh /usr/local/bin/acme-init /usr/local/bin/acme-validate /usr/local/bin/search
+COPY --chown=root:root search /usr/local/bin/
+RUN chmod 755 /entrypoint /test-ready.sh /test-live.sh /test-startup.sh /usr/local/bin/search
 
 # STIG Remediations
 RUN authselect select minimal --force
