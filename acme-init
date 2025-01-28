@@ -204,7 +204,11 @@ set_or_default KT_PROVIDER
 set_or_default KT_PROVIDER_ARGS
 set_or_default KT_PROVIDER_PATH
 
-if fips_enabled ; then
+# Find the Java keytool, if it's installed
+KEYTOOL="false"
+type -P keytool &>/dev/null && KEYTOOL="true"
+
+if as_boolean "${KEYTOOL}" && fips_enabled && [ -v BC_PROV_JAR ] ; then
 	[ -n "${KT_PROVIDER}" ] || KT_PROVIDER="org.bouncycastle.jcajce.provider.BouncyCastleFipsProvider"
 	[ -n "${KT_PROVIDER_PATH}" ] || KT_PROVIDER_PATH="${BC_PROV_JAR}"
 	[ -n "${KEYSTORE_TYPE}" ] || KEYSTORE_TYPE="BCPKCS12"
@@ -367,10 +371,6 @@ if [ ${COUNT} -eq 0 ] ; then
 else
 	say "\t✅ Deployed ${COUNT} certificates!"
 fi
-
-# Find the Java keytool, if it's installed
-KEYTOOL="false"
-type -P keytool &>/dev/null && KEYTOOL="true"
 
 ################################################################################
 #
