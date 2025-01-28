@@ -368,6 +368,10 @@ else
 	say "\t✅ Deployed ${COUNT} certificates!"
 fi
 
+# Find the Java keytool, if it's installed
+KEYTOOL="false"
+type -P keytool &>/dev/null && KEYTOOL="true"
+
 ################################################################################
 #
 # Download our new certificates from the ACME instance
@@ -572,9 +576,6 @@ if [ -f "${ACME_PASSWORD_FILE}" ] ; then
 	SECURE_FILES+=("${SSL_DIR}/haproxy-cert.pem")
 	say "\t✅ Done!"
 
-	# Find the Java keytool, if it's installed
-	KEYTOOL="false"
-	type -P keytool &>/dev/null && KEYTOOL="true"
 	if as_boolean "${KEYTOOL}" && ! as_boolean "${ACME_WAIT}" ; then
 		doing "Rendering a ${KEYSTORE_TYPE} Keystore with the new certificate & key..."
 		openssl pkcs12 \
