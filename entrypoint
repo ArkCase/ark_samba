@@ -12,6 +12,7 @@ set_or_default INIT_DIR "${BASE_DIR}/init"
 set_or_default CONF_DIR "${BASE_DIR}/conf"
 set_or_default BOOT_DIR "${BASE_DIR}/boot"
 set_or_default BACKEND_STORE_SIZE_GB "8"
+set_or_default LOG_ARCHIVE_COUNT "10"
 
 [[ "${BACKEND_STORE_SIZE_GB}" =~ ^[1-9][0-9]*$ ]] || fail "The value for BACKEND_STORE_SIZE_GB is not a valid number: [${BACKEND_STORE_SIZE_GB}]"
 
@@ -371,4 +372,60 @@ if [ -d "${BOOT_DIR}" ] ; then
 	)
 fi
 
+#
+# Roll the log directory contents
+#
+LOG_DIR="/var/log/samba"
+while read dummy ; do
+	# We use this while loop as a trick to only execute this part
+	# if there are older logs that need archival (i.e. don't do this
+	# when there are no prior logs!)
+	LOG_ARCHIVE_DIR="${LOG_DIR}/archive"
+
+	# First off, find the last ${LOG_ARCHIVE_COUNT} archives, and
+	# remove the oldest one, to both make disk space and ensure we
+	# respect the configured limits
+	if is_dir_readable "${LOG_ARCHIVE_DIR}" ; then
+		DELETED="false"
+		if [ ${LOG_ARCHIVE_COUNT} -ge 1 ] ; then
+			while read DEL ; do
+				as_boolean "${DELETED}" || doing "Clearing out the old archived logs"
+				doing "Deleting ${DEL}"
+				rm -rf "${DEL}" || { err "Failed to delete ${DEL}" ; continue ; }
+				ok "Archive ${DEL} deleted!"
+				DELETED="true"
+			done < <(find "${LOG_ARCHIVE_DIR}" -mindepth 1 -maxdepth 1 -type d | sort | head -n -$(( LOG_ARCHIVE_COUNT - 1 )))
+		else
+			rm -rf "${LOG_ARCHIVE_DIR}" && DELETED="false" || err "Failed to remove the log archive directory"
+		fi
+		as_boolean "${DELETED}" && ok "Archive cleaned up"
+	fi
+
+	NEW_LOG_ARCHIVE="archive/$(date -u "+%Y%m%d-%H%M%SZ")"
+	doing "Moving all prior logs in ${LOG_DIR} into ${LOG_DIR}/${NEW_LOG_ARCHIVE}"
+	(
+		set -euo pipefail
+		cd "${LOG_DIR}"
+		mkdir -p "${NEW_LOG_ARCHIVE}"
+		find . -mindepth 1 -maxdepth 1 -not -name "archive" | sort | xargs mv -vf -t "${NEW_LOG_ARCHIVE}"
+	) || fail "Failed to move the old Samba logs into the archive folder ${NEW_LOG_ARCHIVE}"
+
+	ok "Logs relocated!"
+
+	# We only care for one iteration..
+	break
+done < <(find "${LOG_DIR}" -maxdepth 1 -type f)
+
+#
+# Patching hosts file
+#
+
+DC_FQDN="${POD_NAME}.${DOMAIN}"
+doing "Patching the hosts file for ${DC_FQDN} -> ${LDAP_SERVICE_HOST}"
+echo "${LDAP_SERVICE_HOST}\t${DC_FQDN}" >> /etc/hosts
+ok "Hosts file patched!"
+
+#
+# Let's go!!
+#
 execute /usr/sbin/samba -F
