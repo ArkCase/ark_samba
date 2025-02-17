@@ -15,4 +15,4 @@ USERNAME="$(read_setting "DOMAIN_USERNAME" "Administrator")"
 PASSWORD="$(read_setting "DOMAIN_PASSWORD")"
 
 ${DEBUG} && set -x
-exec ldapsearch -H ldaps://localhost -D "${REALM}\\${USERNAME}" -y <(echo -n "${PASSWORD}") "${@}"
+ldapsearch -H ldaps://localhost -D "${REALM}\\${USERNAME}" -y <(echo -n "${PASSWORD}") "${@}"
