@@ -138,7 +138,7 @@ RUN chmod 755 /entrypoint /test-ready.sh /test-live.sh /test-startup.sh /usr/loc
 # Add the configuration file templates
 #
 COPY --chown=root:root smb.conf.template /etc/samba/
-COPY --chown=root:root krb.conf.template /etc/
+COPY --chown=root:root krb5.conf.template /etc/
 
 # STIG Remediations
 RUN authselect select minimal --force
