@@ -248,7 +248,7 @@ configure_k8s()
 # In case we're in Kubernetes
 set_or_default DNSFORWARDER
 [ -n "${DNSFORWARDER}" ] || DNSFORWARDER="$(configure_k8s)" || say "Kubernetes configurations not available"
-[ -n "${DNSFORWARDER}" ] || DNSFORWARDER="NONE"
+export DNSFORWARDER
 
 #
 # Configure the components
