@@ -1,0 +1,30 @@
+# Global parameters
+[global]
+	wins support = yes
+	template shell = /bin/bash
+	idmap config {{ $.DOMAIN_REALM | upper }}:backend = ad
+	idmap config {{ $.DOMAIN_REALM | upper }}:range = 10000-20000
+	idmap config {{ $.DOMAIN_REALM | upper }}:schema_mode = rfc2307
+	idmap config {{ $.DOMAIN_REALM | upper }}:unix_nss_info = yes
+	vfs objects = dfs_samba4 acl_xattr
+	map acl inherit = yes
+	store dos attributes = yes		
+	{{- with $.DNSFORWARDER }}
+	dns forwarder = {{ . }}
+	{{- end }}
+	netbios name = {{ $.POD_NAME | upper }}
+	realm = {{ $.DOMAIN | upper }}
+	server role = active directory domain controller
+	workgroup = {{ $.DOMAIN_REALM | upper }}
+	idmap_ldb:use rfc2307 = yes
+	{{- if eq "true" ($.INSECURELDAP | lower) }}
+	ldap server require strong auth = no
+	{{- end }}
+
+[sysvol]
+	path = /var/lib/samba/sysvol
+	read only = No
+
+[netlogon]
+	path = /var/lib/samba/sysvol/{{ $.DOMAIN | lower }}/scripts
+	read only = No

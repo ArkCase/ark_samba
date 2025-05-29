@@ -1,0 +1,15 @@
+[libdefaults]
+default_realm = {{ $.DOMAIN | upper }}
+kdc_timesync = 1
+ccache_type = 4
+forwardable = true
+proxiable = true
+dns_lookup_realm = false
+dns_lookup_kdc = true
+fcc-mit-ticketflags = true
+
+[realms]
+{{ $.DOMAIN | upper }} = {
+	kdc = {{ $.POD_IP }}
+	admin_server = {{ $.POD_NAME | lower }}
+}

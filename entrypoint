@@ -17,9 +17,7 @@ set_or_default LOG_ARCHIVE_COUNT "10"
 [[ "${BACKEND_STORE_SIZE_GB}" =~ ^[1-9][0-9]*$ ]] || fail "The value for BACKEND_STORE_SIZE_GB is not a valid number: [${BACKEND_STORE_SIZE_GB}]"
 
 SMB_CONF="/etc/samba/smb.conf"
-EXT_SMB_CONF="${CONF_DIR}/smb.conf"
 KRB_CONF="/etc/krb5.conf"
-EXT_KRB_CONF="${CONF_DIR}/krb5.conf"
 
 set_or_default SAMBA_STATE "/var/lib/samba"
 SAMBA_PRIVATE="${SAMBA_STATE}/private"
@@ -30,7 +28,6 @@ SAMBA_PRIVATE="${SAMBA_STATE}/private"
 DOMAINPASS="${DOMAINPASS:-youshouldsetapassword}"
 NOCOMPLEXITY="${NOCOMPLEXITY:-false}"
 INSECURELDAP="${INSECURELDAP:-false}"
-DNSFORWARDER="${DNSFORWARDER:-NONE}"
 HOSTIP="${HOSTIP:-NONE}"
 
 DOMAIN="${DOMAIN:-SAMDOM.LOCAL}"
@@ -169,72 +166,29 @@ cfg_mismatch()
 	say "This mismatch is unresolvable - please manually clean out the existing data files and logs, or fix the configuration file"
 }
 
-check_krb_conf()
-{
-	[ -f "${EXT_KRB_CONF}" ] || return 1
-
-	local EXT_DOMAIN="$(ini_get_value "${EXT_KRB_CONF}" "libdefaults" "default_realm")"
-	[ "${EXT_DOMAIN^^}" == "${DOMAIN^^}" ] || { cfg_mismatch "kerberos realm" "${EXT_DOMAIN}" "${DOMAIN}" ; exit 1 ; }
-
-	return 0
-}
-
-check_smb_conf()
-{
-	[ -f "${EXT_SMB_CONF}" ] || return 1
-
-	local EXT_REALM="$(ini_get_value "${EXT_SMB_CONF}" "global" "workgroup")"
-	[ "${EXT_REALM^^}" == "${REALM^^}" ] || { cfg_mismatch "realm" "${EXT_REALM}" "${REALM}" ; exit 1 ; }
-
-	local EXT_DOMAIN="$(ini_get_value "${EXT_SMB_CONF}" "global" "realm")"
-	[ "${EXT_DOMAIN^^}" == "${DOMAIN^^}" ] || { cfg_mismatch "domain" "${EXT_DOMAIN}" "${DOMAIN}" ; exit 1 ; }
-
-	return 0
-}
-
 configure_krb()
 {
-	if check_krb_conf ; then
-		cp -f "${EXT_KRB_CONF}" "${KRB_CONF}"
-		return 0
-	fi
-
 	#
 	# Configure Kerberos
 	#
-	mv "${KRB_CONF}" "${KRB_CONF}".orig
-	cat <<-EOF > "${KRB_CONF}"
-	[libdefaults]
-		default_realm = ${UDOMAIN}
-		kdc_timesync = 1
-		ccache_type = 4
-		forwardable = true
-		proxiable = true
-		dns_lookup_realm = false
-		dns_lookup_kdc = true
-		fcc-mit-ticketflags = true
+	gucci < "${KRB_CONF}.template" > "${KRB_CONF}"
 
-	[realms]
-		${UDOMAIN} = {
-			kdc = ${POD_IP:-127.0.0.1}
-			admin_server = ${POD_NAME:-$(hostname)}
-		}
-	EOF
+	return 0
+}
 
-	backup_file "${EXT_KRB_CONF}"
-	cp -f "${KRB_CONF}" "${EXT_KRB_CONF}"
+render_smb_conf()
+{
+	#
+	# Configure Samba
+	#
+	gucci < "${SMB_CONF}.template" > "${SMB_CONF}"
 
 	return 0
 }
 
 configure_smb()
 {
-	if check_smb_conf ; then
-		cp -f "${EXT_SMB_CONF}" "${SMB_CONF}"
-		return 0
-	fi
-
-	is_initialized && return 0
+	is_initialized && render_smb_conf && return 0
 
 	say "Configuring the domain"
 
@@ -258,30 +212,7 @@ configure_smb()
 		samba-tool domain passwordsettings set --max-pwd-age=0 || return 1
 	fi
 
-	sed -i "/\[global\]/a \
-		\\\twins support = yes\\n\
-		template shell = /bin/bash\\n\
-		idmap config ${REALM}:backend = ad\\n\
-		idmap config ${REALM}:range = 10000-20000\\n\
-		idmap config ${REALM}:schema_mode = rfc2307\\n\
-		idmap config ${REALM}:unix_nss_info = yes\\n\
-		vfs objects = dfs_samba4 acl_xattr\\n\
-		map acl inherit = yes\\n\
-		store dos attributes = yes\
-		" "${SMB_CONF}"
-	if [ "${DNSFORWARDER}" != "NONE" ]; then
-		sed -i "/\[global\]/a \
-			\\\tdns forwarder = ${DNSFORWARDER}\
-			" "${SMB_CONF}"
-	fi
-	if [ "${INSECURELDAP,,}" == "true" ]; then
-		sed -i "/\[global\]/a \
-			\\\tldap server require strong auth = no\
-			" "${SMB_CONF}"
-	fi
-	# Once we are set up, we'll make a file so that we know to use it if we ever spin this up again
-	backup_file "${EXT_SMB_CONF}"
-	cp -f "${SMB_CONF}" "${EXT_SMB_CONF}"
+	render_smb_conf
 
 	# Apply extra initializations, if needed
 	local INIT_SCRIPTS="${INIT_DIR}/init.d"
@@ -307,22 +238,17 @@ configure_k8s()
 
 	[ -v KUBERNETES_SERVICE_HOST ] || return 1
 
-	# We've been explicitly told who our forwarder is, so we don't use it
-	# TODO: Support setting a name here that can be looked up via K8s DNS
-	#       perhaps by checking to see if we've been given an IP address
-	#       or a hostname?
-	[ -v DNSFORWARDER ] && [ -n "${DNSFORWARDER}" ] && return 0
-
 	# Lookup the DNS name kube-dns.kube-system.svc.cluster.local
-	local CLUSTER_DOMAIN="$(hostname -f | sed -e 's;^.*\.svc\.;;g')"
+	local CLUSTER_DOMAIN="$(get_cluster_domain)"
 	local K8S_DNS="$(dig +short "kube-dns.kube-system.svc.${CLUSTER_DOMAIN}")"
 	[ -n "${K8S_DNS}" ] || return 1
-
-	export DNSFORWARDER="${K8S_DNS}"
+	echo "${K8S_DNS}"
 }
 
 # In case we're in Kubernetes
-configure_k8s || say "Kubernetes configurations not available"
+set_or_default DNSFORWARDER
+[ -n "${DNSFORWARDER}" ] || DNSFORWARDER="$(configure_k8s)" || say "Kubernetes configurations not available"
+[ -n "${DNSFORWARDER}" ] || DNSFORWARDER="NONE"
 
 #
 # Configure the components
