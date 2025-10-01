@@ -343,15 +343,6 @@ while read dummy ; do
 done < <(find "${LOG_DIR}" -maxdepth 1 -type f)
 
 #
-# Patching hosts file
-#
-
-DC_FQDN="${POD_NAME}.${DOMAIN}"
-doing "Patching the hosts file for ${DC_FQDN} -> ${LDAP_SERVICE_HOST}"
-echo "${LDAP_SERVICE_HOST}\t${DC_FQDN}" >> /etc/hosts
-ok "Hosts file patched!"
-
-#
 # Let's go!!
 #
 execute /usr/sbin/samba -F
