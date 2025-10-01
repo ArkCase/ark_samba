@@ -112,7 +112,7 @@ RUN yum -y install \
     rm -rf /rpm /etc/yum.repos.d/arkcase.repo
 
 # Install STEP
-COPY --chown=root:root --chmod=0755 --from=step /step /usr/local/bin/step
+COPY --chown=root:root --chmod=0755 --from=step /step /usr/local/bin/
 
 #
 # Declare some important volumes
