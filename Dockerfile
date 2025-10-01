@@ -9,8 +9,9 @@ ARG OS="linux"
 ARG VER="4.14.5"
 ARG PKG="samba"
 
-ARG STEP_VER="0.28.7"
-ARG STEP_SRC="https://dl.smallstep.com/gh-release/cli/gh-release-header/v${STEP_VER}/step-cli-${STEP_VER}-1.x86_64.rpm"
+ARG STEP_REBUILD_REPO="arkcase/step-rebuild"
+ARG STEP_REBUILD_TAG="latest" 
+ARG STEP_REBUILD_IMG="${PRIVATE_REGISTRY}/${STEP_REBUILD_REPO}:${STEP_REBUILD_TAG}"
 
 ARG SAMBA_REGISTRY="${BASE_REGISTRY}"
 ARG SAMBA_REPO="arkcase/samba-rpmbuild"
@@ -29,6 +30,8 @@ ARG ARK_BASE_VER_PFX="${BASE_VER_PFX}"
 ARG ARK_BASE_IMG="${ARK_BASE_REGISTRY}/${ARK_BASE_REPO}:${ARK_BASE_VER_PFX}${ARK_BASE_VER}"
 
 FROM "${ARK_BASE_IMG}" AS arkcase-base
+
+FROM "${STEP_REBUILD_IMG}" AS step
 
 FROM "${SAMBA_RPM_IMG}" AS src
 
@@ -52,8 +55,6 @@ ARG ARCH
 ARG OS
 ARG VER
 ARG PKG
-ARG STEP_VER
-ARG STEP_SRC
 
 #
 # Some important labels
@@ -103,12 +104,13 @@ RUN yum -y install \
         sssd-krb5 \
         telnet \
         which \
-        "${STEP_SRC}" \
     && \
     yum -y clean all && \
     update-alternatives --set python /usr/bin/python3 && \
     rm -rf /rpm /etc/yum.repos.d/arkcase.repo
 
+# Install STEP
+COPY --chown=root:root --chmod=0755 --from=step /step /usr/local/bin/step
 
 #
 # Declare some important volumes
