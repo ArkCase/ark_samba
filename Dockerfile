@@ -9,7 +9,7 @@ ARG OS="linux"
 ARG VER="4.14.5"
 ARG PKG="samba"
 
-ARG STEP_VER="0.28.6"
+ARG STEP_VER="0.28.7"
 ARG STEP_SRC="https://dl.smallstep.com/gh-release/cli/gh-release-header/v${STEP_VER}/step-cli-${STEP_VER}-1.x86_64.rpm"
 
 ARG SAMBA_REGISTRY="${BASE_REGISTRY}"
@@ -130,9 +130,9 @@ COPY --chown=root:root --from=arkcase-base /usr/local/bin/* /usr/local/bin
 #
 # Set up script and run
 #
-COPY --chown=root:root entrypoint test-ready.sh test-live.sh test-startup.sh samba-directory-templates.tar.gz /
-COPY --chown=root:root search /usr/local/bin/
-RUN chmod 755 /entrypoint /test-ready.sh /test-live.sh /test-startup.sh /usr/local/bin/search
+COPY --chown=root:root --chmod=0640 samba-directory-templates.tar.gz /
+COPY --chown=root:root --chmod=0755 entrypoint test-ready.sh test-live.sh test-startup.sh /
+COPY --chown=root:root --chmod=0755 search /usr/local/bin/
 
 #
 # Add the configuration file templates
