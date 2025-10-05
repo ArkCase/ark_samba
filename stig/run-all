@@ -9,7 +9,7 @@ set -euo pipefail
 run()
 {
 	running "Running: ${@}"
-	( exec "${@}" )
+	( set +euo pipefail ; exec "${@}" )
 	return ${?}
 }
 
