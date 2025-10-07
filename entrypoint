@@ -20,7 +20,9 @@ SMB_CONF="/etc/samba/smb.conf"
 KRB_CONF="/etc/krb5.conf"
 
 set_or_default SAMBA_STATE "/var/lib/samba"
-SAMBA_PRIVATE="${SAMBA_STATE}/private"
+export SAMBA_STATE
+
+export SAMBA_PRIVATE="${SAMBA_STATE}/private"
 
 #
 # Set and normalize variables
