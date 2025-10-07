@@ -72,6 +72,7 @@ EXPOSE 636
 #
 # Set up script and run
 #
+COPY --chown=root:root --chmod=0640 samba-directory-templates.tar.gz /
 COPY --chown=root:root --chmod=0755 entrypoint test-ready.sh test-live.sh test-startup.sh /
 COPY --chown=root:root --chmod=0755 search /usr/local/bin/
 
