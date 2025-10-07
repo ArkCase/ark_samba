@@ -1,5 +1,14 @@
 # Global parameters
 [global]
+	# Make sure the same paths are used ALWAYS
+	state directory = {{ $.SAMBA_STATE }}
+	cache directory = {{ $.SAMBA_STATE }}
+
+    # Derivative state directories
+	binddns dir = {{ $.SAMBA_STATE }}/bind-dns
+	ntp signd socket directory = {{ $.SAMBA_STATE }}/ntp_signd
+	private dir = {{ $.SAMBA_STATE }}/private
+
 	wins support = yes
 	template shell = /bin/bash
 	idmap config {{ $.DOMAIN_REALM | upper }}:backend = ad
@@ -22,9 +31,9 @@
 	{{- end }}
 
 [sysvol]
-	path = /var/lib/samba/sysvol
+	path = {{ $.SAMBA_STATE }}/sysvol
 	read only = No
 
 [netlogon]
-	path = /var/lib/samba/sysvol/{{ $.DOMAIN | lower }}/scripts
+	path = {{ $.SAMBA_STATE }}/sysvol/{{ $.DOMAIN | lower }}/scripts
 	read only = No
