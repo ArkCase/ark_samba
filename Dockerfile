@@ -10,8 +10,6 @@ ARG OS="linux"
 ARG VER="4.14.5"
 ARG PKG="samba"
 
-ARG PUBLISH_MAJOR="true"
-
 ARG STEP_REBUILD_REGISTRY="${PRIVATE_REGISTRY}"
 ARG STEP_REBUILD_REPO="arkcase/rebuild-step-ca"
 ARG STEP_REBUILD_TAG="latest" 
