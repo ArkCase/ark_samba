@@ -23,7 +23,6 @@ jobs:
       ECR_AWS_ACCOUNT_ID: ${{ secrets.ECR_AWS_ACCOUNT_ID }}
       ECR_AWS_SECRET_ACCESS_KEY: ${{ secrets.ECR_AWS_SECRET_ACCESS_KEY }}
       CURL_ENCRYPTION_KEY: ${{ secrets.CURL_ENCRYPTION_KEY }}
-      CURL_AUTH_FILE: ${{ secrets.CURL_AUTH_FILE }}
       CURL_USERNAME: ${{ secrets.CURL_USERNAME }}
       CURL_PASSWORD: ${{ secrets.CURL_PASSWORD }}
       MVN_GET_ENCRYPTION_KEY: ${{ secrets.MVN_GET_ENCRYPTION_KEY }}
