@@ -94,8 +94,6 @@ is_initialized()
 	CANDIDATES+=("private/encrypted_secrets.key")
 	CANDIDATES+=("private/hklm.ldb")
 	CANDIDATES+=("private/idmap.ldb")
-	CANDIDATES+=("private/kdc.conf")
-	CANDIDATES+=("private/krb5.conf")
 	CANDIDATES+=("private/netlogon_creds_cli.tdb")
 	CANDIDATES+=("private/privilege.ldb")
 	CANDIDATES+=("private/sam.ldb")
@@ -106,23 +104,7 @@ is_initialized()
 	CANDIDATES+=("private/share.ldb")
 	CANDIDATES+=("private/spn_update_list")
 	CANDIDATES+=("private/wins_config.ldb")
-
-	#
-	# SSL Certificates
-	#
-	CANDIDATES+=("private/tls/ca.pem")
-	CANDIDATES+=("private/tls/cert.pem")
-	CANDIDATES+=("private/tls/key.pem")
-
-	#
-	# Domain configurations
-	#
 	CANDIDATES+=("private/sam.ldb.d/metadata.tdb")
-	CANDIDATES+=("private/sam.ldb.d/CN=CONFIGURATION,${DC}.ldb")
-	CANDIDATES+=("private/sam.ldb.d/CN=SCHEMA,CN=CONFIGURATION,${DC}.ldb")
-	CANDIDATES+=("private/sam.ldb.d/DC=DOMAINDNSZONES,${DC}.ldb")
-	CANDIDATES+=("private/sam.ldb.d/DC=FORESTDNSZONES,${DC}.ldb")
-	CANDIDATES+=("private/sam.ldb.d/${DC}.ldb")
 
 	#
 	# Check for the created databases
@@ -132,6 +114,44 @@ is_initialized()
 		C="${SAMBA_STATE}/${C}"
 		is_file_readable "${C}" && continue
 		as_boolean "${FIRST}" && err "The following state files were not found"
+		FIRST="false"
+		err "${C}"
+	done
+	as_boolean "${FIRST}" || return 1
+
+	#
+	# Check to see which domains are housed here (must be exactly 0 or 1, and
+	# the "one" MUST match our configured domain)
+	#
+	local DOMAINS=()
+	readarray -t DOMAINS < <(find "${SAMBA_STATE}/private/sam.ldb.d" -type f -name 'CN=CONFIGURATION,*.ldb' | sed -e 's;^.*/CN=CONFIGURATION,;;g' -e 's;[.]ldb$;;g' -e 's;DC=;;g' -e 's;,;.;g' | tr '[[:upper:]]' '[[:lower:]]' | sort -u)
+
+	# There must be EXACTLY zero or one domains
+	case "${#DOMAINS[@]}" in
+		# No data! No problem!
+		0 ) ;;
+
+		# Data for another domain? Is it ours? If not, KABOOM!
+		1 ) [ "${DOMAIN,,}" == "${DOMAINS[0]}" ] || fail "This Samba persistent state belongs to the domain [${DOMAINS[0]}], but this pod is configured for the domain ${DOMAIN,,}" ;;
+
+		# Data for more than one domain?!?! HOW?!?! Well... doesn't matter ... KABOOM!
+		* ) fail "This Samba persistent state appears to store data for the domains [ ${DOMAINS[@]} ], but this pod is configured for the domain ${DOMAIN,,}" ;;
+	esac
+
+	#
+	# Verify the rest of the domain configurations...
+	#
+	local DOMAIN_DATA=()
+	DOMAIN_DATA+=("private/sam.ldb.d/CN=CONFIGURATION,${DC}.ldb")
+	DOMAIN_DATA+=("private/sam.ldb.d/CN=SCHEMA,CN=CONFIGURATION,${DC}.ldb")
+	DOMAIN_DATA+=("private/sam.ldb.d/DC=DOMAINDNSZONES,${DC}.ldb")
+	DOMAIN_DATA+=("private/sam.ldb.d/DC=FORESTDNSZONES,${DC}.ldb")
+	DOMAIN_DATA+=("private/sam.ldb.d/${DC}.ldb")
+	local FIRST="true"
+	for C in "${DOMAIN_DATA[@]}" ; do
+		C="${SAMBA_STATE}/${C}"
+		is_file_readable "${C}" && continue
+		as_boolean "${FIRST}" && err "Samba common state appears to be present, but the following domain data files were not found"
 		FIRST="false"
 		err "${C}"
 	done
