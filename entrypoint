@@ -127,21 +127,24 @@ is_initialized()
 	#
 	# Check for the created databases
 	#
+	local FIRST="true"
 	for C in "${CANDIDATES[@]}" ; do
 		C="${SAMBA_STATE}/${C}"
-		[ -e "${C}" ] || return 1
-		[ -f "${C}" ] || return 1
-		[ -r "${C}" ] || return 1
+		is_file_readable "${C}" && continue
+		as_boolean "${FIRST}" && err "The following state files were not found"
+		FIRST="false"
+		err "${C}"
 	done
+	as_boolean "${FIRST}" || return 1
 
 	#
 	# Domain Policies
 	#
 	local POLICY_DIR="${SAMBA_STATE}/sysvol/${DOMAIN,,}/Policies"
-	[ -e "${POLICY_DIR}" ] || return 1
-	[ -d "${POLICY_DIR}" ] || return 1
-	[ -r "${POLICY_DIR}" ] || return 1
-	[ -x "${POLICY_DIR}" ] || return 1
+	if ! is_dir_readable "${POLICY_DIR}" ; then
+		err "The policy directory [${POLICY_DIR}] could not be found!"
+		return 1
+	fi
 
 	#
 	# Is this correct? Can a domain exist with no policies?
@@ -153,7 +156,7 @@ is_initialized()
 	#
 	# We're fully configured, so we don't have to redo it
 	#
-	say "Domain data is already configured"
+	ok "Domain data is already configured"
 	return 0
 }
 
@@ -190,7 +193,7 @@ render_smb_conf()
 
 configure_smb()
 {
-	is_initialized && render_smb_conf && return 0
+	is_initialized && render_smb_conf && ok "Samba is already configured!" && return 0
 
 	say "Configuring the domain"
 
