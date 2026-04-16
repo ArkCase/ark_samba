@@ -150,8 +150,8 @@ is_initialized()
 	local FIRST="true"
 	for C in "${DOMAIN_DATA[@]}" ; do
 		# Look for the file without URL-encoding
-		C="${SAMBA_STATE}/${C}"
-		is_file_readable "${C}" && continue
+		F="${SAMBA_STATE}/${C}"
+		is_file_readable "${F}" && continue
 
 		# Sometimes the filename is URL-encoded...so look for that as well
 		E="${SAMBA_STATE}/$(urlencode "${C}")"
@@ -159,7 +159,7 @@ is_initialized()
 
 		as_boolean "${FIRST}" && err "Samba common state appears to be present, but the following domain data files were not found"
 		FIRST="false"
-		err "${C}"
+		err "${F}"
 	done
 	as_boolean "${FIRST}" || fail "Some Samba configurations were found, but not the domain databases - can't continue!"
 
