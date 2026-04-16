@@ -37,9 +37,7 @@ LABEL VERSION="${VER}"
 # Install all apps
 # The third line is for multi-site config (ping is for testing later)
 #
-RUN apt-get update && \
-    apt-get -y dist-upgrade && \
-    DEBIAN_FRONTEND=noninteractive \
+RUN DEBIAN_FRONTEND=noninteractive \
     apt-get -y install \
         chrony \
         krb5-config \
