@@ -149,22 +149,28 @@ is_initialized()
 	DOMAIN_DATA+=("private/sam.ldb.d/${DC}.ldb")
 	local FIRST="true"
 	for C in "${DOMAIN_DATA[@]}" ; do
+		# Look for the file without URL-encoding
 		C="${SAMBA_STATE}/${C}"
 		is_file_readable "${C}" && continue
+
+		# Sometimes the filename is URL-encoded...so look for that as well
+		E="${SAMBA_STATE}/$(urlencode "${C}")"
+		is_file_readable "${E}" && continue
+
 		as_boolean "${FIRST}" && err "Samba common state appears to be present, but the following domain data files were not found"
 		FIRST="false"
 		err "${C}"
 	done
-	as_boolean "${FIRST}" || return 1
+	as_boolean "${FIRST}" || fail "Some Samba configurations were found, but not the domain databases - can't continue!"
 
 	#
 	# Domain Policies
 	#
-	local POLICY_DIR="${SAMBA_STATE}/sysvol/${DOMAIN,,}/Policies"
-	if ! is_dir_readable "${POLICY_DIR}" ; then
-		err "The policy directory [${POLICY_DIR}] could not be found!"
-		return 1
-	fi
+	#local POLICY_DIR="${SAMBA_STATE}/sysvol/${DOMAIN,,}/Policies"
+	#if ! is_dir_readable "${POLICY_DIR}" ; then
+	# 	err "The policy directory [${POLICY_DIR}] could not be found!"
+	# 	return 1
+	#fi
 
 	#
 	# Is this correct? Can a domain exist with no policies?
