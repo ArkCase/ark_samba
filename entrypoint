@@ -141,20 +141,21 @@ is_initialized()
 	#
 	# Verify the rest of the domain configurations...
 	#
+	local DOMAIN_DATA_DIR="${SAMBA_STATE}/private/sam.ldb.d"
 	local DOMAIN_DATA=()
-	DOMAIN_DATA+=("private/sam.ldb.d/CN=CONFIGURATION,${DC}.ldb")
-	DOMAIN_DATA+=("private/sam.ldb.d/CN=SCHEMA,CN=CONFIGURATION,${DC}.ldb")
-	DOMAIN_DATA+=("private/sam.ldb.d/DC=DOMAINDNSZONES,${DC}.ldb")
-	DOMAIN_DATA+=("private/sam.ldb.d/DC=FORESTDNSZONES,${DC}.ldb")
-	DOMAIN_DATA+=("private/sam.ldb.d/${DC}.ldb")
+	DOMAIN_DATA+=("CN=CONFIGURATION,${DC}.ldb")
+	DOMAIN_DATA+=("CN=SCHEMA,CN=CONFIGURATION,${DC}.ldb")
+	DOMAIN_DATA+=("DC=DOMAINDNSZONES,${DC}.ldb")
+	DOMAIN_DATA+=("DC=FORESTDNSZONES,${DC}.ldb")
+	DOMAIN_DATA+=("${DC}.ldb")
 	local FIRST="true"
 	for C in "${DOMAIN_DATA[@]}" ; do
 		# Look for the file without URL-encoding
-		F="${SAMBA_STATE}/${C}"
+		F="${DOMAIN_DATA_DIR}/${C}"
 		is_file_readable "${F}" && continue
 
 		# Sometimes the filename is URL-encoded...so look for that as well
-		E="${SAMBA_STATE}/$(urlencode "${C}")"
+		E="${DOMAIN_DATA_DIR}/$(urlencode "${C}")"
 		is_file_readable "${E}" && continue
 
 		as_boolean "${FIRST}" && err "Samba common state appears to be present, but the following domain data files were not found"
