@@ -25,10 +25,10 @@ ARG ARCH
 ARG OS
 ARG VER
 ARG PKG
-# ARG APP_UID="1999"
-# ARG APP_USER="samba"
-# ARG APP_GID="${APP_UID}"
-# ARG APP_GROUP="${APP_USER}"
+ARG APP_UID="1999"
+ARG APP_USER="samba"
+ARG APP_GID="${APP_UID}"
+ARG APP_GROUP="${APP_USER}"
 
 #
 # Some important labels
@@ -66,14 +66,32 @@ RUN DEBIAN_FRONTEND=noninteractive \
 #
 # Declare some important volumes
 #
-VOLUME /var/log/samba
-VOLUME /var/lib/samba
+# VOLUME /var/log/samba
+# VOLUME /var/lib/samba
+
+ENV APP_USER="${APP_USER}"
+ENV APP_UID="${APP_UID}"
+ENV APP_GROUP="${APP_GROUP}"
+ENV APP_GID="${APP_GID}"
+
+ENV HOME_DIR="/var/lib/samba"
+ENV LOGS_DIR="/var/log/samba"
 
 #
 # Run Samba as non-root!
 #
-# RUN groupadd --gid "${APP_GID}" "${APP_GROUP}" && \
-#     useradd  --uid "${APP_UID}" --gid "${APP_GROUP}" --groups "${ACM_GROUP}" --create-home --home-dir "${HOME_DIR}" "${APP_USER}"
+# More info here, if needed: https://github.com/dperson/samba/issues/170
+#
+RUN rm -rf "${HOME_DIR}" "${LOGS_DIR}" && \
+    groupadd --gid "${APP_GID}" "${APP_GROUP}" && \
+    useradd  --uid "${APP_UID}" --gid "${APP_GROUP}" --groups "${ACM_GROUP}" --create-home --home-dir "${HOME_DIR}" "${APP_USER}" && \
+    mkdir -p "${HOME_DIR}" "${LOGS_DIR}" && \
+    chown -R "${APP_USER}:${APP_GROUP}" "${HOME_DIR}" "${LOGS_DIR}" /etc/samba /etc/krb5.conf && \
+    chmod -R u=rwX,g=rX,o= "${HOME_DIR}" "${LOGS_DIR}" /etc/samba /etc/krb5.conf && \
+    setcap \
+        "cap_net_bind_service=ep" /usr/sbin/samba \
+        "cap_net_bind_service=ep" /usr/sbin/smbd \
+        "cap_net_bind_service=ep" /usr/sbin/winbindd
 
 EXPOSE 389
 EXPOSE 636
@@ -81,7 +99,7 @@ EXPOSE 636
 #
 # Set up script and run
 #
-COPY --chown=root:root --chmod=0640 samba-directory-templates.tar.gz /
+COPY --chown=root:root --chmod=0444 samba-directory-templates.tar.gz /
 COPY --chown=root:root --chmod=0755 entrypoint test-ready.sh test-live.sh test-startup.sh /
 COPY --chown=root:root --chmod=0755 search /usr/local/bin/
 
@@ -97,21 +115,24 @@ COPY --chown=root:root smb.conf.template /etc/samba/
 COPY --chown=root:root krb5.conf.template /etc/
 
 # STIG Remediations
-COPY --chown=root:root stig/ /usr/share/stig/
-RUN cd /usr/share/stig && ./run-all
+RUN --mount=type=bind,target=/src \
+    STIG="/usr/share/stig" && \
+    cp -r /src/stig "${STIG}" && \
+    cd "${STIG}" && \
+    ./run-all && \
+    cd / && \
+    rm -rf "${STIG}"
 
 #
 # Fix ownerships!
 #
-# RUN chown -R "${APP_USER}:${APP_GROUP}" /etc/samba
+RUN chown -R "${APP_USER}:${APP_GROUP}" /etc/samba && \
+    chmod -R u=rwX,g=rX,o= /etc/samba
 
 #
 # Run as non-root!
 #
-# USER "${APP_USER}"
-
-# This is required by acme-init. It's ok to set it to root for this container
-ENV ACM_GROUP="root"
+USER "${APP_USER}"
 
 HEALTHCHECK CMD /test-ready.sh
 

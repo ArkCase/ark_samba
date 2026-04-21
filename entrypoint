@@ -16,11 +16,11 @@ set_or_default LOG_ARCHIVE_COUNT "10"
 
 [[ "${BACKEND_STORE_SIZE_GB}" =~ ^[1-9][0-9]*$ ]] || fail "The value for BACKEND_STORE_SIZE_GB is not a valid number: [${BACKEND_STORE_SIZE_GB}]"
 
-SMB_CONF="/etc/samba/smb.conf"
-KRB_CONF="/etc/krb5.conf"
-
 set_or_default SAMBA_STATE "/var/lib/samba"
 export SAMBA_STATE
+
+SMB_CONF="/etc/samba/smb.conf"
+KRB_CONF="/etc/krb5.conf"
 
 export SAMBA_PRIVATE="${SAMBA_STATE}/private"
 
@@ -64,7 +64,7 @@ reset_data()
 {
 	say "Cleaning up any vestigial configurations"
 	rm -rf "${SAMBA_STATE}"/* /var/log/samba/*
-	tar -C / -xzf /samba-directory-templates.tar.gz
+	tar -C "${SAMBA_STATE}" -xzvf /samba-directory-templates.tar.gz
 }
 
 #
