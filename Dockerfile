@@ -1,6 +1,7 @@
 #
 # Basic Parameters
 #
+ARG FIPS=""
 ARG PUBLIC_REGISTRY="public.ecr.aws"
 ARG PRIVATE_REGISTRY
 ARG BASE_VER_PFX=""
@@ -13,7 +14,7 @@ ARG BASE_REGISTRY="${PUBLIC_REGISTRY}"
 ARG BASE_REPO="arkcase/base"
 ARG BASE_VER="${VER}"
 ARG BASE_VER_PFX="${BASE_VER_PFX}"
-ARG BASE_IMG="${BASE_REGISTRY}/${BASE_REPO}:${BASE_VER_PFX}${BASE_VER}"
+ARG BASE_IMG="${BASE_REGISTRY}/${BASE_REPO}${FIPS}:${BASE_VER_PFX}${BASE_VER}"
 
 FROM "${BASE_IMG}"
 
@@ -24,6 +25,10 @@ ARG ARCH
 ARG OS
 ARG VER
 ARG PKG
+# ARG APP_UID="1999"
+# ARG APP_USER="samba"
+# ARG APP_GID="${APP_UID}"
+# ARG APP_GROUP="${APP_USER}"
 
 #
 # Some important labels
@@ -64,6 +69,12 @@ RUN DEBIAN_FRONTEND=noninteractive \
 VOLUME /var/log/samba
 VOLUME /var/lib/samba
 
+#
+# Run Samba as non-root!
+#
+# RUN groupadd --gid "${APP_GID}" "${APP_GROUP}" && \
+#     useradd  --uid "${APP_UID}" --gid "${APP_GROUP}" --groups "${ACM_GROUP}" --create-home --home-dir "${HOME_DIR}" "${APP_USER}"
+
 EXPOSE 389
 EXPOSE 636
 
@@ -75,6 +86,11 @@ COPY --chown=root:root --chmod=0755 entrypoint test-ready.sh test-live.sh test-s
 COPY --chown=root:root --chmod=0755 search /usr/local/bin/
 
 #
+# Allow non-root allocation of low ports
+#
+# RUN setcap 'cap_net_bind_service=ep' /usr/sbin/smbd
+
+#
 # Add the configuration file templates
 #
 COPY --chown=root:root smb.conf.template /etc/samba/
@@ -83,6 +99,16 @@ COPY --chown=root:root krb5.conf.template /etc/
 # STIG Remediations
 COPY --chown=root:root stig/ /usr/share/stig/
 RUN cd /usr/share/stig && ./run-all
+
+#
+# Fix ownerships!
+#
+# RUN chown -R "${APP_USER}:${APP_GROUP}" /etc/samba
+
+#
+# Run as non-root!
+#
+# USER "${APP_USER}"
 
 # This is required by acme-init. It's ok to set it to root for this container
 ENV ACM_GROUP="root"
