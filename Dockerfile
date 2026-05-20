@@ -97,8 +97,7 @@ COPY --chown=root:root smb.conf.template /etc/samba/
 COPY --chown=root:root krb5.conf.template /etc/
 
 # STIG Remediations
-COPY --chown=root:root stig/ /usr/share/stig/
-RUN cd /usr/share/stig && ./run-all
+RUN --mount=type=bind,source=stig,target=/stig run-stig /stig
 
 #
 # Fix ownerships!
