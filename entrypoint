@@ -198,12 +198,31 @@ cfg_mismatch()
 	say "This mismatch is unresolvable - please manually clean out the existing data files and logs, or fix the configuration file"
 }
 
+# This function provides backwards compatibility. We're phasing out
+# direct invocation of gucci in favor of the wrapper script which
+# will eventually allow us to replace the template renderer completely
+render_template()
+{
+	local TC_VAR="TEMPLATE_COMMAND"
+	if [ ! -v "${TC_VAR}" ] ; then
+		local CMD=( "render-template" "gucci" )
+		# Be backwards-compatible as a contingency
+		for C in "${CMD[@]}" ; do
+			type -P "${C}" &>/dev/null || continue
+			declare -g "${TC_VAR}"="${C}"
+			break
+		done
+		[ -v "${TC_VAR}" ] || fail "No tool present to render the template with. Candidates: [ ${CMD[@]@Q} ]"
+	fi
+	"${TEMPLATE_COMMAND}"
+}
+
 configure_krb()
 {
 	#
 	# Configure Kerberos
 	#
-	gucci < "${KRB_CONF}.template" > "${KRB_CONF}"
+	render_template < "${KRB_CONF}.template" > "${KRB_CONF}"
 
 	return 0
 }
@@ -213,7 +232,7 @@ render_smb_conf()
 	#
 	# Configure Samba
 	#
-	gucci < "${SMB_CONF}.template" > "${SMB_CONF}"
+	render_template < "${SMB_CONF}.template" > "${SMB_CONF}"
 
 	return 0
 }
