@@ -37,6 +37,9 @@ LDOMAIN="${DOMAIN,,}"
 UDOMAIN="${DOMAIN^^}"
 REALM="${UDOMAIN%%.*}"
 
+export INTERFACES="$(cat /proc/net/dev | tail -n +3 | awk '{ print $1 }' | tr -d ':' | xargs)"
+[ -n "${POD_IP:-}" ] && INTERFACES+=" ${POD_IP}"
+
 D2=()
 IFS="." D2=(${DOMAIN})
 D3=()
@@ -262,6 +265,9 @@ configure_smb()
 		samba-tool domain passwordsettings set --min-pwd-age=0 || return 1
 		samba-tool domain passwordsettings set --max-pwd-age=0 || return 1
 	fi
+
+	# TODO: for auto-join of backup DCs ...
+	# samba-tool domain join "${LDOMAIN}" DC -U"${REALM}\\Administrator" --password="${DOMAINPASS}" --dns-backend=SAMBA_INTERNAL
 
 	render_smb_conf
 

@@ -1,0 +1,52 @@
+#!/bin/bash
+
+set -euo pipefail
+. /.functions
+
+set_as_boolean DNS_UPDATE "false"
+
+LOG="/var/log/samba/dns-update.log"
+redirect_logs "${LOG}"
+
+as_boolean "${DNS_UPDATE}" || quit "DNS Update is disabled"
+
+set_or_default DNS_WAIT_MAX "5m"
+DNS_WAIT_MAX_SEC="$(timestr_to_secs "${DNS_WAIT_MAX}")" || fail "Invalid timestring for DNS max wait [${DNS_WAIT_MAX}]"
+DNS_WAIT_MAX="$(secs_to_timestr "${DNS_WAIT_MAX_SEC}")" || fail "Invalid number of seconds for DNS max wait [${DNS_WAIT_MAX_SEC}] (from [${DNS_WAIT_MAX}])"
+
+set_or_default DNS_WAIT_SLEEP "3s"
+DNS_WAIT_SLEEP_SEC="$(timestr_to_secs "${DNS_WAIT_SLEEP}")" || fail "Invalid timestring for DNS sleep [${DNS_WAIT_SLEEP}]"
+DNS_WAIT_SLEEP="$(secs_to_timestr "${DNS_WAIT_SLEEP_SEC}")" || fail "Invalid number of seconds for DNS sleep [${DNS_WAIT_SLEEP_SEC}] (from [${DNS_WAIT_SLEEP}])"
+
+is_samba_alive()
+{
+	samba-tool processes --name=ldap_server &>/dev/null
+}
+
+# Check to see if Samba is running ... if not, wait for it
+START="$(date -u "+%s")"
+DEADLINE=$(( START + DNS_WAIT_MAX_SEC ))
+FIRST="true"
+while ! is_samba_alive ; do
+	if as_boolean "${FIRST}" ; then
+		sleeping "Will wait up to ${DNS_WAIT_MAX} for Samba to come online..."
+		FIRST="false"
+	fi
+
+	# Check to see if we've blown past the deadline
+	NOW="$(date -u "+%s")"
+	DIFF=$(( NOW - START ))
+	[ ${DIFF} -ge ${DNS_WAIT_MAX_SEC} ] && break
+
+	# If our last sleep interval must be shorter, make it shorter
+	REM=$(( DEADLINE - NOW ))
+	[ ${REM} -lt ${DNS_WAIT_SLEEP_SEC} ] && DNS_WAIT_SLEEP_SEC=${REM}
+	sleep ${DNS_WAIT_SLEEP_SEC} || fail "Sleep cycle interrupted - aborting!"
+done
+
+is_samba_alive || fail "Samba did not come up in the allowed time (${DNS_WAIT_MAX})"
+
+eyes "Samba is alive! Performing the DNS update ..."
+samba_dnsupdate --verbose --use-samba-tool --current-ip="${POD_IP}" --all-names --force || fail "Samba DNS update failed (rc=${?})"
+ok "Samba DNS update complete!"
+exit 0
