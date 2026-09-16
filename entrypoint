@@ -40,6 +40,19 @@ REALM="${UDOMAIN%%.*}"
 export INTERFACES="$(cat /proc/net/dev | tail -n +3 | awk '{ print $1 }' | tr -d ':' | xargs)"
 [ -n "${POD_IP:-}" ] && INTERFACES+=" ${POD_IP}"
 
+#
+# TODO for clustering:
+#
+# When booting up, analyze the pod's name. Pod #0 will *ALWAYS* be the master DC, and
+# all other pods will be joined as backups. That means that on first boot, all pods
+# except the master MUST wait for the master to boot up cleanly before they can
+# themselves be joined/whatnot.
+#
+# After the first boot is a different story we've yet to figure out fully b/c
+# what happens if they come back up but the master isn't around, but other pods
+# in the cluster are? Is it safe to sync up with that one? What is the correct play?
+#
+
 D2=()
 IFS="." D2=(${DOMAIN})
 D3=()
