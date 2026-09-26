@@ -338,12 +338,12 @@ init_ssl
 LOCAL_CERT_HOME="${SAMBA_PRIVATE}/tls"
 ensure_dir "${LOCAL_CERT_HOME}"
 
-cp -vf "${SSL_DIR}/ca-root.pem" "${LOCAL_CERT_HOME}/ca.pem"
-cp -vf "${SSL_DIR}/cert.pem" "${LOCAL_CERT_HOME}/cert.pem"
+cp -vf "${SSL_CA_ROOT}" "${LOCAL_CERT_HOME}/ca.pem"
+cp -vf "${SSL_CERTIFICATE}" "${LOCAL_CERT_HOME}/cert.pem"
 chmod ug=r,o= "${LOCAL_CERT_HOME}"/*.pem
 
 # This file has to have stricter permissions
-cp -vf "${SSL_DIR}/cert.key" "${LOCAL_CERT_HOME}/key.pem"
+cp -vf "${SSL_PRIVATE_KEY}" "${LOCAL_CERT_HOME}/key.pem"
 chmod u=rw,go= "${LOCAL_CERT_HOME}/key.pem"
 
 #
