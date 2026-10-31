@@ -7,8 +7,8 @@ DEBUG="$(to_boolean "${DEBUG:-false}")"
 
 ${DEBUG} && set -x
 
-OUT="$(samba-tool processes --name=ldap_server 2>&1)"
-RC=${?}
+RC=0
+OUT="$(samba-tool processes --name=ldap_server 2>&1)" || RC=${?}
 ${DEBUG} && set +x
 if [ ${RC} -ne 0 ] ; then
 	echo -e "Failed to verify the Samba process status"

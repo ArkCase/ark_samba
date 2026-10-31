@@ -19,7 +19,7 @@ ${DEBUG} && set -x
 [ -n "${SECRETS_DIR}" ] || SECRETS_DIR="${BASE_DIR}/secrets"
 
 [ -v DOMAIN ] || DOMAIN=""
-[ -n "${DOMAIN}" ] || DOMAIN="$(<"${SECRETS_DIR}/DOMAIN_NAME)")"
+[ -n "${DOMAIN}" ] || DOMAIN="$(<"${SECRETS_DIR}/DOMAIN_NAME")"
 
 #
 # This function will check to see if the instance can be considered
@@ -126,8 +126,8 @@ is_initialized()
 }
 
 ${DEBUG} && set -x
-is_initialized
-RC=${?}
+RC=0
+is_initialized || RC=${?}
 ${DEBUG} && set +x
 if [ ${RC} -ne 0 ] ; then
 	echo -e "This instance isn't initialized properly"

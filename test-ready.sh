@@ -11,8 +11,8 @@ export SECRETS_DIR
 
 ${DEBUG} && set -x
 
-OUT="$(openssl s_client -connect localhost:636 -showcerts </dev/null 2>&1)"
-RC=${?}
+RC=0
+OUT="$(openssl s_client -connect localhost:636 -showcerts </dev/null 2>&1)" || RC=${?}
 ${DEBUG} && set +x
 if [ ${RC} -ne 0 ] ; then
 	echo -e "Failed to get the SSL certificates from the LDAPS server"
@@ -25,8 +25,8 @@ ${DEBUG} && echo -e "${OUT}"
 ROOT_DN="$(read_setting "DOMAIN_ROOT_DN")"
 
 ${DEBUG} && set -x
-OUT="$(search -s one -b "${ROOT_DN}" "(objectClass=organizationalUnit)" dn 2>&1)"
-RC=${?}
+RC=0
+OUT="$(search -s one -b "${ROOT_DN}" "(objectClass=organizationalUnit)" dn 2>&1)" || RC=${?}
 ${DEBUG} && set +x
 if [ ${RC} -ne 0 ] ; then
 	echo -e "Failed to execute a test LDAPS query"

@@ -54,7 +54,7 @@ export INTERFACES="$(cat /proc/net/dev | tail -n +3 | awk '{ print $1 }' | tr -d
 #
 
 D2=()
-IFS="." D2=(${DOMAIN})
+IFS="." read -r -a D2 <<< "${DOMAIN}"
 D3=()
 for P in "${D2[@]}" ; do
 	D3+=("DC=${P^^}")
@@ -248,7 +248,8 @@ render_smb_conf()
 	#
 	# Configure Samba
 	#
-	render_template < "${SMB_CONF}.template" > "${SMB_CONF}"
+	# Must not be left to the caller: it would wipe the existing domain data on a non-0 status
+	render_template < "${SMB_CONF}.template" > "${SMB_CONF}" || fail "Failed to render the Samba configuration at [${SMB_CONF}] (rc=${?})"
 
 	return 0
 }
@@ -291,8 +292,10 @@ configure_smb()
 		cd "${INIT_SCRIPTS}" || exit 1
 		while read script ; do
 			say "\tLaunching the extra initializer script [${script}]..."
-			if ! "$(readlink -f "${script}")" ; then
-				say "\tError executing the initializer script [${script}] (rc=${?})"
+			RC=0
+			"$(readlink -f "${script}")" < /dev/null || RC=${?}
+			if [ ${RC} -ne 0 ] ; then
+				say "\tError executing the initializer script [${script}] (rc=${RC})"
 				return 1
 			fi
 		done < <(find . -mindepth 1 -maxdepth 1 -type f -perm /u+x | sort | sed -e 's;^./;;g')
@@ -310,7 +313,8 @@ configure_k8s()
 
 	# Lookup the DNS name kube-dns.kube-system.svc.cluster.local
 	local CLUSTER_DOMAIN="$(get_cluster_domain)"
-	local K8S_DNS="$(dig +short "kube-dns.kube-system.svc.${CLUSTER_DOMAIN}")"
+	local K8S_DNS=""
+	K8S_DNS="$(dig +short "kube-dns.kube-system.svc.${CLUSTER_DOMAIN}")" || return 1
 	[ -n "${K8S_DNS}" ] || return 1
 	echo "${K8S_DNS}"
 }
@@ -356,7 +360,7 @@ if [ -d "${BOOT_DIR}" ] ; then
 		while read script ; do
 			say "\tLaunching the boot script [${script}]..."
 			RC=0
-			( "./${script}" 2>&1 ) || RC=${?}
+			( "./${script}" 2>&1 ) < /dev/null || RC=${?}
 			if [ ${RC} -ne 0 ]  ; then
 				say "\tError executing the boot script [${script}] (rc=${RC})"
 				exit 1
