@@ -82,7 +82,8 @@ EXPOSE 636
 # Set up script and run
 #
 COPY --chown=root:root --chmod=0640 samba-directory-templates.tar.gz /
-COPY --chown=root:root --chmod=0755 entrypoint test-ready.sh test-live.sh test-startup.sh /
+COPY --chown=root:root --chmod=0755 entrypoint /usr/local/bin
+COPY --chown=root:root --chmod=0755 test-ready.sh test-live.sh test-startup.sh /
 COPY --chown=root:root --chmod=0755 dns-update search /usr/local/bin/
 
 #
@@ -113,5 +114,3 @@ RUN --mount=type=bind,source=stig,target=/stig run-stig /stig
 ENV ACM_GROUP="root"
 
 HEALTHCHECK CMD /test-ready.sh
-
-ENTRYPOINT [ "/entrypoint" ]
