@@ -39,10 +39,12 @@ LABEL APP="Samba"
 LABEL VERSION="${VER}"
 
 #
-# Install all apps
+# Install all apps, and set up the scripts and configuration templates
 # The third line is for multi-site config (ping is for testing later)
 #
-RUN DEBIAN_FRONTEND=noninteractive \
+RUN --mount=type=bind,target=/src \
+    umask 0007 && \
+    DEBIAN_FRONTEND=noninteractive \
     apt-get -y install \
         chrony \
         krb5-config \
@@ -61,13 +63,13 @@ RUN DEBIAN_FRONTEND=noninteractive \
         smbclient \
         winbind \
       && \
-    apt-get clean
-
-#
-# Declare some important volumes
-#
-VOLUME /var/log/samba
-VOLUME /var/lib/samba
+    apt-get clean && \
+    install -o root -g root -m 0640 /src/samba-directory-templates.tar.gz / && \
+    install -o root -g root -m 0750 -t /usr/local/bin /src/entrypoint /src/dns-update /src/search && \
+    install -o root -g root -m 0750 -t / /src/test-ready.sh /src/test-live.sh /src/test-startup.sh && \
+    install -o root -g root -m 0640 /src/smb.conf.template /etc/samba/ && \
+    install -o root -g root -m 0640 /src/krb5.conf.template /etc/ && \
+    run-stig /src/stig
 
 #
 # Run Samba as non-root!
@@ -75,30 +77,10 @@ VOLUME /var/lib/samba
 # RUN groupadd --gid "${APP_GID}" "${APP_GROUP}" && \
 #     useradd  --uid "${APP_UID}" --gid "${APP_GROUP}" --groups "${ACM_GROUP}" --create-home --home-dir "${HOME_DIR}" "${APP_USER}"
 
-EXPOSE 389
-EXPOSE 636
-
-#
-# Set up script and run
-#
-COPY --chown=root:root --chmod=0640 samba-directory-templates.tar.gz /
-COPY --chown=root:root --chmod=0755 entrypoint /usr/local/bin
-COPY --chown=root:root --chmod=0755 test-ready.sh test-live.sh test-startup.sh /
-COPY --chown=root:root --chmod=0755 dns-update search /usr/local/bin/
-
 #
 # Allow non-root allocation of low ports
 #
 # RUN setcap 'cap_net_bind_service=ep' /usr/sbin/smbd
-
-#
-# Add the configuration file templates
-#
-COPY --chown=root:root smb.conf.template /etc/samba/
-COPY --chown=root:root krb5.conf.template /etc/
-
-# STIG Remediations
-RUN --mount=type=bind,source=stig,target=/stig run-stig /stig
 
 #
 # Fix ownerships!
@@ -109,6 +91,9 @@ RUN --mount=type=bind,source=stig,target=/stig run-stig /stig
 # Run as non-root!
 #
 # USER "${APP_USER}"
+
+EXPOSE 389
+EXPOSE 636
 
 # This is required by acme-init. It's ok to set it to root for this container
 ENV ACM_GROUP="root"
