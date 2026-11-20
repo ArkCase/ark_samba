@@ -32,25 +32,28 @@ is_initialized()
 	#
 	# Common data
 	#
-	CANDIDATES+=("account_policy.tdb")
-	CANDIDATES+=("netsamlogon_cache.tdb")
-	CANDIDATES+=("registry.tdb")
+	# The commented-out files only get created by services other than
+	# ldap, which are disabled (server services = ldap in smb.conf)
+	#
+	# CANDIDATES+=("account_policy.tdb")
+	# CANDIDATES+=("netsamlogon_cache.tdb")
+	# CANDIDATES+=("registry.tdb")
 	CANDIDATES+=("share_info.tdb")
 	# CANDIDATES+=("smbprofile.tdb")
-	CANDIDATES+=("winbindd_cache.tdb")
-	CANDIDATES+=("wins.ldb")
+	# CANDIDATES+=("winbindd_cache.tdb")
+	# CANDIDATES+=("wins.ldb")
 
 	#
 	# Private data
 	#
-	CANDIDATES+=("private/dns_update_cache")
+	# CANDIDATES+=("private/dns_update_cache")
 	CANDIDATES+=("private/dns_update_list")
 	CANDIDATES+=("private/encrypted_secrets.key")
 	CANDIDATES+=("private/hklm.ldb")
 	CANDIDATES+=("private/idmap.ldb")
 	# CANDIDATES+=("private/kdc.conf")
 	CANDIDATES+=("private/krb5.conf")
-	CANDIDATES+=("private/netlogon_creds_cli.tdb")
+	# CANDIDATES+=("private/netlogon_creds_cli.tdb")
 	CANDIDATES+=("private/privilege.ldb")
 	CANDIDATES+=("private/sam.ldb")
 	CANDIDATES+=("private/schannel_store.tdb")
@@ -59,7 +62,7 @@ is_initialized()
 	CANDIDATES+=("private/secrets.tdb")
 	CANDIDATES+=("private/share.ldb")
 	CANDIDATES+=("private/spn_update_list")
-	CANDIDATES+=("private/wins_config.ldb")
+	# CANDIDATES+=("private/wins_config.ldb")
 
 	#
 	# SSL Certificates

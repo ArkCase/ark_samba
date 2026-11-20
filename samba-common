@@ -3,6 +3,9 @@
 set -euo pipefail
 . /.functions
 
+# Nothing this container creates needs to be world-readable
+umask 0027
+
 DEBUG="$(to_boolean "${DEBUG:-false}")"
 
 ${DEBUG} && set -x

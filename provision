@@ -17,6 +17,9 @@ cleanup()
 	return ${RC}
 }
 
+# Provisioning needs root (e.g. for the sysvol ACLs), the runtime doesn't
+[ "$(id -u)" -eq 0 ] || fail "The provisioner must run as root (running as $(id -un))"
+
 #
 # Configure the components
 #
@@ -24,3 +27,12 @@ running "Provisioning the Samba domain ${LDOMAIN@Q} (${REALM} / ${DC})"
 configure_krb
 configure_smb
 ok "The Samba domain has been provisioned!"
+
+#
+# The runtime is non-root: hand it whatever it doesn't own yet, and take
+# away any access for others (symlinks are skipped: chmod would follow them)
+#
+doing "Ensuring the Samba state and logs belong to ${APP_USER}:${APP_GROUP}, with no access for others"
+find "${SAMBA_STATE}" "/var/log/samba" \( ! -user "${APP_USER}" -o ! -group "${APP_GROUP}" \) -print0 | sort -z | xargs -r -0 -L 10 -P 4 chown --no-dereference --changes "${APP_USER}:${APP_GROUP}" -- || fail "Failed to assign the Samba state and logs to ${APP_USER}:${APP_GROUP} (rc=${?})"
+find "${SAMBA_STATE}" "/var/log/samba" ! -type l -perm /o=rwx -print0 | sort -z | xargs -r -0 -L 10 -P 4 chmod --changes o= -- || fail "Failed to remove the access for others from the Samba state and logs (rc=${?})"
+ok "Ownership and permissions verified!"

@@ -25,10 +25,10 @@ ARG ARCH
 ARG OS
 ARG VER
 ARG PKG
-# ARG APP_UID="1999"
-# ARG APP_USER="samba"
-# ARG APP_GID="${APP_UID}"
-# ARG APP_GROUP="${APP_USER}"
+ARG APP_UID="1999"
+ARG APP_USER="samba"
+ARG APP_GID="${APP_UID}"
+ARG APP_GROUP="${APP_USER}"
 
 #
 # Some important labels
@@ -37,6 +37,11 @@ LABEL ORG="ArkCase LLC"
 LABEL MAINTAINER="ArkCase Support <support@arkcase.com>"
 LABEL APP="Samba"
 LABEL VERSION="${VER}"
+
+ENV APP_UID="${APP_UID}" \
+    APP_GID="${APP_GID}" \
+    APP_USER="${APP_USER}" \
+    APP_GROUP="${APP_GROUP}"
 
 #
 # Install all apps, and set up the scripts and configuration templates
@@ -64,38 +69,28 @@ RUN --mount=type=bind,target=/src \
         winbind \
       && \
     apt-get clean && \
+    groupadd --system --gid "${APP_GID}" "${APP_GROUP}" && \
+    useradd  --system --uid "${APP_UID}" --gid "${APP_GROUP}" --groups "${ACM_GROUP}" --no-create-home --home-dir "/var/lib/samba" "${APP_USER}" && \
     install -o root -g root -m 0640 /src/samba-directory-templates.tar.gz / && \
-    install -o root -g root -m 0750 -t /usr/local/bin /src/samba-common /src/entrypoint /src/provision /src/dns-update /src/search && \
-    install -o root -g root -m 0750 -t / /src/test-ready.sh /src/test-live.sh /src/test-startup.sh && \
-    install -o root -g root -m 0640 /src/smb.conf.template /etc/samba/ && \
-    install -o root -g root -m 0640 /src/krb5.conf.template /etc/ && \
+    install -o root -g root -m 0755 -t /usr/local/bin /src/samba-common /src/entrypoint /src/provision /src/dns-update /src/search && \
+    install -o root -g root -m 0755 -t / /src/test-ready.sh /src/test-live.sh /src/test-startup.sh && \
+    install -o root -g "${APP_GROUP}" -m 0640 /src/smb.conf.template /etc/samba/ && \
+    install -o root -g "${APP_GROUP}" -m 0640 /src/krb5.conf.template /etc/ && \
+    install -d -o "${APP_USER}" -g "${APP_GROUP}" -m 0750 "${CONF_DIR}" /run/samba /var/lib/samba /var/log/samba && \
+    ln -sfn "${CONF_DIR}/smb.conf" /etc/samba/smb.conf && \
+    ln -sfn "${CONF_DIR}/krb5.conf" /etc/krb5.conf && \
     run-stig /src/stig
 
 #
-# Run Samba as non-root!
+# Run as non-root! The provisioner (init container) still runs as root, and
+# hands the state and logs over to ${APP_USER} before it exits. The configurations
+# rendered at startup live in ${CONF_DIR} (/etc/samba/smb.conf and /etc/krb5.conf
+# link there). Ports below 1024 need net.ipv4.ip_unprivileged_port_start=0 (a pod
+# sysctl; Docker sets it by default).
 #
-# RUN groupadd --gid "${APP_GID}" "${APP_GROUP}" && \
-#     useradd  --uid "${APP_UID}" --gid "${APP_GROUP}" --groups "${ACM_GROUP}" --create-home --home-dir "${HOME_DIR}" "${APP_USER}"
-
-#
-# Allow non-root allocation of low ports
-#
-# RUN setcap 'cap_net_bind_service=ep' /usr/sbin/smbd
-
-#
-# Fix ownerships!
-#
-# RUN chown -R "${APP_USER}:${APP_GROUP}" /etc/samba
-
-#
-# Run as non-root!
-#
-# USER "${APP_USER}"
+USER "${APP_USER}"
 
 EXPOSE 389
 EXPOSE 636
-
-# This is required by acme-init. It's ok to set it to root for this container
-ENV ACM_GROUP="root"
 
 HEALTHCHECK CMD /test-ready.sh
