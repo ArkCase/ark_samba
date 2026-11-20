@@ -65,7 +65,7 @@ RUN --mount=type=bind,target=/src \
       && \
     apt-get clean && \
     install -o root -g root -m 0640 /src/samba-directory-templates.tar.gz / && \
-    install -o root -g root -m 0750 -t /usr/local/bin /src/entrypoint /src/dns-update /src/search && \
+    install -o root -g root -m 0750 -t /usr/local/bin /src/samba-common /src/entrypoint /src/provision /src/dns-update /src/search && \
     install -o root -g root -m 0750 -t / /src/test-ready.sh /src/test-live.sh /src/test-startup.sh && \
     install -o root -g root -m 0640 /src/smb.conf.template /etc/samba/ && \
     install -o root -g root -m 0640 /src/krb5.conf.template /etc/ && \
