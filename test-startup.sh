@@ -32,8 +32,8 @@ is_initialized()
 	#
 	# Common data
 	#
-	# The commented-out files only get created by services other than
-	# ldap, which are disabled (server services = ldap in smb.conf)
+	# The commented-out files only get created by services which are
+	# disabled (see server services in smb.conf)
 	#
 	# CANDIDATES+=("account_policy.tdb")
 	# CANDIDATES+=("netsamlogon_cache.tdb")

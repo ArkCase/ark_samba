@@ -14,8 +14,9 @@
 	interfaces = {{ . | join " " }}
 	{{- end }}
 
-	# Samba is only used as an LDAP server
-	server services = ldap
+	# Samba is only used as an LDAP server: drepl and kcc listen on no ports,
+	# and do the housekeeping (RID pool refills, deleted object purges)
+	server services = ldap drepl kcc
 
 	wins support = yes
 	template shell = /bin/bash
